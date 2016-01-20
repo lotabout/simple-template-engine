@@ -5,14 +5,17 @@
 If you've ever used Django or involved in web development, there is a very
 high chance that you've met template engine.
 
+Now I'll try to write a simple template engine to understand the logic behind
+it.
+
 # Syntax
 
-Just like a subset of [jinja](http://jinja.pocoo.org/docs/dev/templates/):
+Include python code block inside `{{ ... }}`, and inside code block, escape
+them by `{\{` and `}\}`
 
-- `{{ value.attribute | filter | filter }}` for expressions.
-- `{% ... %}` for statement.
-- `{# ... #}` for comments.
+TODO: add an example
 
 # References
 
-[A Template Engine]: http://aosabook.org/en/500L/pages/a-template-engine.html
+- [A Template Engine](http://aosabook.org/en/500L/pages/a-template-engine.html)
+- [Templite](http://code.activestate.com/recipes/496702/)
