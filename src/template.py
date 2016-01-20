@@ -3,87 +3,55 @@
 
 import re
 
-class CodeBuilder(object):
-    """Used to generate python code"""
-    def __init__(self, indent=0):
-        self.indent = indent
-        self.code = []
-
-    INDENT_STEP = 4
-
-    def indent(self):
-        """Increase the indent for next line"""
-        self.indent += INDENT_STEP
-    def dedent(self):
-        """Decrease the indent for next line"""
-        self.indent -= INDENT_STEP
-
-    def emit_line(self, line):
-        """Add a line to the output, linefeed are added"""
-        self.code.append('{}{}\n'.format(' '*self.indent, line))
-
-    def __str__(self):
-        return "".join(str(c) for c in self.code)
-
-    def add_section(self):
-        """Add a placeholder, i.e. a sub-codebuilder"""
-        section = CodeBuilder(self.indent)
-        self.code.append(section)
-        return section
-
-    def get_globals(self):
-        """Execute the code, and retrieve the globals it defines"""
-        code = str(self)
-        global_namespace = {}
-        exec(code, global_namespace)
-        return global_namespace
-
 class Template():
-    """Create a Template"""
-    def __init__(self, text, *contexts):
-        self.text = text
-        self.context = {}
-        for context in contexts:
-            self.context.update(context)
+    """Compile an text into a template function"""
 
-        self.all_vars = set()
+    def __init__(self, text):
+        self.delimiter = re.compile(r'{%(.*?)%}', re.DOTALL)
+        self.tokens = self.compile(text)
 
-        code_builder = CodeBuilder()
-        code_builder.emit_line('def render_function(context, dot_func):')
-        code_builder.indent()
-        var_defs = code_builder.add_section()
-        code_builder.emit_line('result = []')
-        code_builder.emit_line('extend_result = result.extend')
-        code_builder.emit_line('append_result = result.append')
-
-        buffered = []
-        def flush_output():
-            """emit output string according to buffer"""
-            if len(buffered) == 1:
-                code_builder.emit_line('append_result({})'.format(buffered[0]))
-            elif len(buffered) > 1:
-                code_builder.emit_line('extend_result([{}])'.format(','.join(buffered)))
-            del buffered[:]
-
-        # compile the template_string into codes
-        tokens = re.split(r'(?s)({{.*?}}|{%.*?%}|{#.*?#})', self.text)
-
-        for token in tokens:
-            if token.startswith('{#'):
-                continue
-            elif token.startswith('{{'):
-                expr = self._expr_code(token[2:-2].strip())
-                buffered.append('to_str({})'.format(expr))
-            elif token.startswith('{%'):
-                pass
+    def compile(self, text):
+        tokens = []
+        for index, token in enumerate(self.delimiter.split(text)):
+            if index % 2 == 0:
+                # plain string
+                if token:
+                    tokens.append((False, token.replace('%\}', '%}').replace('{\%', '{%')))
             else:
-                buffered.append(token)
+                # code block
+                # find out the indentation
+                lines = token.replace('{\%', '{%').replace('%\}', '%}').splitlines()
+                indent = min([len(l) - len(l.lstrip()) for l in lines if l.strip()])
+                realigned = '\n'.join(l[indent:] for l in lines)
+                tokens.append((True, compile(realigned, '<tempalte> %s' % realigned[:20], 'exec')))
+        return tokens
 
-        flush_output()
 
-        # add variables
+    def render(self, context = None, **kw):
+        """Render the template according to the given context"""
+        global_context = {}
+        if context:
+            global_context.update(context)
+        if kw:
+            global_context.update(kw)
 
-        # post process
-        code_builder.emit_line('return ''.join(result)')
-        code_builder.dedent()
-        self._render_function = code_builder.get_globals()['render_function']
+        # add function for output
+        def emit(*args):
+            result.extend([str(arg) for arg in args])
+        def fmt_emit(fmt, *args):
+            result.append(fmt % args)
+
+        global_context['emit'] = emit
+        global_context['fmt_emit'] = fmt_emit
+
+        # run the code
+        result = []
+        for is_code, token in self.tokens:
+            if is_code:
+                exec(token, global_context)
+            else:
+                result.append(token)
+        return ''.join(result)
+
+    # make instance callable
+    __call__ = render
